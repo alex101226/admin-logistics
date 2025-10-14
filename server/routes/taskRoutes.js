@@ -5,10 +5,10 @@ async function taskRoutes(fastify)  {
       const { page = 1, pageSize = 10 } = request.query
       const offset = (page - 1) * pageSize;
 
-      const [countRows] = await fastify.db.execute(`SELECT COUNT(*) as total FROM zn_tasks`);
+      const [countRows] = await fastify.db.execute(`SELECT COUNT(*) as total FROM lg_tasks`);
       const total = countRows[0].total;
       const [rows] = await fastify.db.execute(`
-    SELECT * FROM zn_tasks
+    SELECT * FROM lg_tasks
     ORDER BY created_at DESC
     LIMIT ${pageSize} OFFSET ${offset}
     `)
@@ -39,7 +39,7 @@ async function taskRoutes(fastify)  {
         task_name, user_id, area, qos, nodes, gpu_number, cpu_number, plan_running_time,
         remark
       ]
-      const sql = `INSERT INTO zn_tasks (
+      const sql = `INSERT INTO lg_tasks (
           task_name,
           user_id,
           area,
@@ -78,21 +78,21 @@ async function taskRoutes(fastify)  {
                   SUM(IFNULL(nodes,0)) AS total_nodes,
                   SUM(IFNULL(nodes * IFNULL(cpu_number,0),0)) AS total_cpu,
                   SUM(IFNULL(nodes * IFNULL(gpu_number,0),0)) AS total_gpu
-              FROM zn_tasks
+              FROM lg_tasks
           ),
                used_resources AS (
                    SELECT
                        SUM(IFNULL(nodes,0)) AS used_nodes,
                        SUM(IFNULL(nodes * IFNULL(cpu_number,0),0)) AS used_cpu,
                        SUM(IFNULL(nodes * IFNULL(gpu_number,0),0)) AS used_gpu
-                   FROM zn_tasks
+                   FROM lg_tasks
                    WHERE status = 3
                ),
                task_counts AS (
                    SELECT
                        SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) AS running_tasks,
                        SUM(CASE WHEN status = 4 THEN 1 ELSE 0 END) AS queued_tasks
-                   FROM zn_tasks
+                   FROM lg_tasks
                )
           SELECT
               COALESCE(a.total_nodes,0) AS total_nodes,

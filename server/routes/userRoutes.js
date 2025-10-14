@@ -2,19 +2,15 @@ import { generateToken } from '../utils/jwt.js';
 
 async function userRoutes(fastify) {
 
-  // fastify.get('/', function (request, reply) {
-  //   reply.send({ info: 'world' })
-  // })
-
   //  获取所有的用户信息列表
   fastify.get('/getUser', async function (request, reply) {
     try {
-      const { page = 1, pageSize = 10, role_id = 2 } = request.query;
+      const { page = 1, pageSize = 10 } = request.query;
       const offset = (page - 1) * pageSize;
 
       // 查询总数
-      const [countRows] = await fastify.db.execute(`SELECT COUNT(*) as total FROM zn_users u
-      INNER JOIN zn_user_roles ur ON u.id = ur.user_id WHERE ur.role_id = ?`, [Number(role_id)]);
+      const [countRows] = await fastify.db.execute(`SELECT COUNT(*) as total FROM lg_users u
+      INNER JOIN lg_user_roles ur ON u.id = ur.user_id`);
       const total = countRows[0].total;
       // 查询分页数据
       const [rows] = await fastify.db.execute(`
@@ -26,16 +22,16 @@ async function userRoutes(fastify) {
             u.position,
             u.department,
             u.created_at,
+            u.office_location,
+            r.id as role_id,
             r.role_name,
-            r.role_description,
-            u.office_location
-        FROM zn_users u
-                 INNER JOIN zn_user_roles ur ON u.id = ur.user_id
-                 INNER JOIN zn_roles r ON ur.role_id = r.id
-        WHERE ur.role_id = ?
+            r.role_description
+        FROM lg_users u
+                 INNER JOIN lg_user_roles ur ON u.id = ur.user_id
+                 INNER JOIN lg_roles r ON ur.role_id = r.id
         ORDER BY u.id DESC
             LIMIT ${pageSize} OFFSET ${offset}
-    `, [Number(role_id)]);
+    `);
       reply.send({
         data: {
           data: rows,
@@ -62,7 +58,7 @@ async function userRoutes(fastify) {
         return reply.send({ code: 400, message: '用户名/昵称/密码不能为空', data: null })
       }
 
-      const rows = await fastify.db.execute(`SELECT username FROM zn_users WHERE username = ?`, [username]);
+      const rows = await fastify.db.execute(`SELECT username FROM lg_users WHERE username = ?`, [username]);
       if (rows.username === username) {
         return reply.send({ code: 400, message: '用户已存在', data: null })
       }
@@ -70,16 +66,16 @@ async function userRoutes(fastify) {
       // 1. 加密密码
       const hashedPassword = await fastify.hashPassword(password);
 
-      const sql = `INSERT INTO zn_users (nickname, username, password, status, position, department, office_location, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`;
+      const sql = `INSERT INTO lg_users (nickname, username, password, status, position, department, office_location, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`;
       const [result] = await fastify.db.execute(sql, [nickname, username, hashedPassword, status, position, department, office_location]);
       const userId = result.insertId;
       // 2. 插入用户-角色表（写死超级管理员 role_id=1）
-      await fastify.db.execute('INSERT INTO zn_user_roles (user_id, role_id) VALUES (?, ?)', [userId, role_id]);
+      await fastify.db.execute('INSERT INTO lg_user_roles (user_id, role_id) VALUES (?, ?)', [userId, role_id]);
 
       // 3. 插入用户-权限表（写死权限 id=[1,2,3,4]）
       const permissionIds = [1, 2, 3, 4];
       const values = permissionIds.map(pid => `(${userId}, ${pid})`).join(',');
-      await fastify.db.execute(`INSERT INTO zn_user_permissions (user_id, permission_id) VALUES ${values}`);
+      await fastify.db.execute(`INSERT INTO lg_user_permissions (user_id, permission_id) VALUES ${values}`);
       // 假设写数据库成功，返回结果
       return reply.send({
         message: '用户创建成功',
@@ -104,7 +100,7 @@ async function userRoutes(fastify) {
         return reply.send({ code: 400, message: '参数错误' })
       }
       const [result] = await fastify.db.execute(
-          `UPDATE zn_users
+          `UPDATE lg_users
            SET nickname = ?, \`position\` = ?, \`status\` = ?, department = ?, office_location = ?, updated_at = NOW()
            WHERE id = ?`,
           [nickname, position, status, department, office_location, id]
@@ -139,7 +135,7 @@ async function userRoutes(fastify) {
       }
 
       // 去 user 表查
-      const [rows] = await fastify.db.execute(`SELECT id, username, password, nickname FROM zn_users WHERE username = ?`, [username]);
+      const [rows] = await fastify.db.execute(`SELECT id, username, password, nickname FROM lg_users WHERE username = ?`, [username]);
       if (rows.length === 0) {
         return reply.send({ code: 400, message: '用户不存在' })
       }
@@ -191,9 +187,9 @@ async function userRoutes(fastify) {
               r.id AS role_id,
               r.role_name,
               r.role_description
-          FROM zn_users u
-                   INNER JOIN zn_user_roles ur ON u.id = ur.user_id
-                   INNER JOIN zn_roles r ON ur.role_id = r.id
+          FROM lg_users u
+                   INNER JOIN lg_user_roles ur ON u.id = ur.user_id
+                   INNER JOIN lg_roles r ON ur.role_id = r.id
           WHERE u.id = ?
 `, [userId]);
       const user = rows[0];
@@ -223,7 +219,7 @@ async function userRoutes(fastify) {
     try {
       const { userId, password } = request.body;
 
-      const [rows] = await fastify.db.execute(`SELECT username FROM zn_users WHERE id = ?`, [userId]);
+      const [rows] = await fastify.db.execute(`SELECT username FROM lg_users WHERE id = ?`, [userId]);
 
       if (rows.length === 0) {
         return reply.send({ message: '参数错误' })
@@ -235,7 +231,7 @@ async function userRoutes(fastify) {
         const hashedPassword = await fastify.hashPassword(password);
 
         const [result] = await fastify.db.execute(
-            `UPDATE zn_users SET
+            `UPDATE lg_users SET
                     password = ?,
                     updated_at = NOW()
                 WHERE id = ?`, [hashedPassword, userId]);
@@ -270,8 +266,8 @@ async function userRoutes(fastify) {
       const offset = (page - 1) * pageSize;
       const [countRows] = await fastify.db.execute(`
         SELECT COUNT(DISTINCT u.id) AS total
-            FROM zn_users u
-        JOIN zn_user_roles ur ON ur.user_id = u.id AND ur.role_id = 2`)
+            FROM lg_users u
+        JOIN lg_user_roles ur ON ur.user_id = u.id AND ur.role_id = 2`)
       const total = countRows[0].total;
 
       const sql = `
@@ -285,15 +281,15 @@ async function userRoutes(fastify) {
               l.longitude,
               l.location_text,
               l.created_at AS location_time
-          FROM zn_users u
-                   JOIN zn_user_roles ur
+          FROM lg_users u
+                   JOIN lg_user_roles ur
                         ON ur.user_id = u.id AND ur.role_id = 2
                    LEFT JOIN (
               SELECT l1.*
-              FROM zn_user_locations l1
+              FROM lg_user_locations l1
                        JOIN (
                   SELECT user_id, MAX(created_at) AS max_created_at
-                  FROM zn_user_locations
+                  FROM lg_user_locations
                   GROUP BY user_id
               ) lm ON l1.user_id = lm.user_id AND l1.created_at = lm.max_created_at
           ) l ON l.user_id = u.id
@@ -324,7 +320,7 @@ async function userRoutes(fastify) {
     if (!user_id) {
       return reply.send({ code: 400, message: '用户id不能为空' })
     }
-    const [rows] = await fastify.db.execute(`SELECT * FROM zn_user_locations as ur WHERE ur.user_id = ?`, [user_id]);
+    const [rows] = await fastify.db.execute(`SELECT * FROM lg_user_locations as ur WHERE ur.user_id = ?`, [user_id]);
     return reply.send({
       code: 0,
       data: rows,
@@ -340,7 +336,7 @@ async function userRoutes(fastify) {
     }
 
     const [rows] = await fastify.db.execute(
-        `SELECT id FROM zn_user_locations WHERE user_id = ? ORDER BY created_at ASC`,
+        `SELECT id FROM lg_user_locations WHERE user_id = ? ORDER BY created_at ASC`,
         [user_id]
     );
     if (rows.length >= 5) {
@@ -349,13 +345,13 @@ async function userRoutes(fastify) {
 
       if (idsToDelete.length > 0) {
         await fastify.db.execute(
-            `DELETE FROM zn_user_locations WHERE id IN (${idsToDelete.map(() => '?').join(',')})`,
+            `DELETE FROM lg_user_locations WHERE id IN (${idsToDelete.map(() => '?').join(',')})`,
             idsToDelete
         );
       }
     }
 
-    const sql = `INSERT INTO zn_user_locations (user_id, latitude, longitude, location_text, created_at)
+    const sql = `INSERT INTO lg_user_locations (user_id, latitude, longitude, location_text, created_at)
     VALUES (?, ?, ?, ?, NOW())`;
 
     const [result] = await fastify.db.execute(sql, [user_id, latitude, longitude, location_text]);

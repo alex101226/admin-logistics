@@ -70,7 +70,7 @@ async function generateTasks() {
       const endTime = dayjs(startTime).add(planMinutes, 'minute').format('YYYY-MM-DD HH:mm:ss');
 
       await conn.execute(
-          `INSERT INTO zn_tasks 
+          `INSERT INTO lg_tasks 
       (task_name, area, qos, nodes, gpu_number, cpu_number, plan_running_time, real_running_time, start_time, end_time, remark, status, user_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [taskName, area, qos, nodes, gpu_number, cpu_number, planTimeStr, realTimeStr, startTime, endTime, '任务', status, userId, dayjs(createdAt).format('YYYY-MM-DD HH:mm:ss')]

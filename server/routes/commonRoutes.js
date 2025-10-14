@@ -49,7 +49,7 @@ async function commonRoutes(fastify) {
 
   //  查找所有的司机数据
   fastify.get('/getDriver', async (request, reply) => {
-    const [rows] = await fastify.db.execute('SELECT * FROM zn_drivers');
+    const [rows] = await fastify.db.execute('SELECT * FROM lg_drivers');
     reply.send({
       data: {
         data: rows
@@ -59,8 +59,8 @@ async function commonRoutes(fastify) {
 
   //  查询所有的地址
   fastify.get('/getLocations', async (request, reply) => {
-    const [rows] = await fastify.db.execute('SELECT * FROM zn_locations')
-    const [[{ total }]] = await fastify.db.execute('SELECT COUNT(*) AS total FROM zn_locations')
+    const [rows] = await fastify.db.execute('SELECT * FROM lg_locations')
+    const [[{ total }]] = await fastify.db.execute('SELECT COUNT(*) AS total FROM lg_locations')
 
     return reply.send({
       data: {
@@ -70,5 +70,17 @@ async function commonRoutes(fastify) {
     })
   })
 
+  //  查找角色
+  fastify.get('/getRoleList', async (request, reply) => {
+    const [rows] = await fastify.db.execute('SELECT * FROM lg_roles')
+    const [[{ total }]] = await fastify.db.execute('SELECT COUNT(*) AS total FROM lg_roles')
+
+    return reply.send({
+      data: {
+        data: rows,
+        total: total
+      }
+    })
+  })
 }
 export default commonRoutes;

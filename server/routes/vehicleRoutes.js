@@ -11,37 +11,20 @@ async function vehicleRoutes(fastify)  {
       const offset = (page - 1) * pageSize;
 
       // 查询总数
-      const [countRows] = await fastify.db.execute(`SELECT COUNT(*) AS total FROM zn_vehicles v LEFT JOIN zn_users u ON v.owner_id = u.id`);
+      const [countRows] = await fastify.db.execute(`SELECT COUNT(*) AS total FROM lg_vehicles v LEFT JOIN lg_users u ON v.owner_id = u.id`);
 
       const total = countRows[0].total;
 
       // 查询分页数据
       const [rows] = await fastify.db.query(
           `SELECT 
-           v.id,
-           v.plate_number,
-           v.vehicle_alias,
-           v.vehicle_photo,
-           v.brand,
-           v.manufacture_year,
-           v.series_number,
-           v.vin_code,
-           v.mileage,
-           v.fuel_type,
-           v.engine_number,
-           v.insurance_expiry,
-           v.current_location_id,
-           v.department,
-           v.purchase_date,
-           v.status,
-           v.remark,
-           v.created_at,
-           v.updated_at,
-           v.owner_id,
+           v.*,
            u.username AS operator_account,
-           u.nickname AS operator_nickname
-         FROM zn_vehicles v
-         LEFT JOIN zn_users u ON v.owner_id = u.id
+           u.nickname AS operator_nickname,
+           zl.name as current_location_name
+         FROM lg_vehicles v
+         LEFT JOIN lg_users u ON v.owner_id = u.id
+         LEFT JOIN lg_locations zl ON zl.id = v.current_location_id
          ORDER BY v.created_at DESC
          LIMIT ${pageSize} OFFSET ${offset}`);
 
@@ -51,8 +34,8 @@ async function vehicleRoutes(fastify)  {
       if (vehicleIds.length > 0) {
         const [driverRows] = await fastify.db.query(
             `SELECT vehicle_id, driver_id, d.name 
-         FROM zn_vehicle_drivers vd
-         JOIN zn_drivers d ON vd.driver_id = d.id
+         FROM lg_vehicle_drivers vd
+         JOIN lg_drivers d ON vd.driver_id = d.id
          WHERE vehicle_id IN (${vehicleIds.map(() => '?').join(',')})`,
             vehicleIds
         );
@@ -95,25 +78,28 @@ async function vehicleRoutes(fastify)  {
     try {
       const {
         vehicle_alias, vehicle_photo, brand, manufacture_year, department, current_location_id,
-        series_number, vin_code, mileage, fuel_type, engine_number, insurance_expiry,
-        purchase_date, remark, status, owner_id, plate_number, driver_ids,
+        series_number, vin_code, mileage, fuel_type, engine_number, insurance_expiry, purchase_date,
+        remark, status, owner_id, plate_number, driver_ids, vehicle_weight, load_capacity,
+        emission_standard, safety_equipment
       } = request.body;
 
-      const [rows] = await fastify.db.execute(`SELECT vin_code FROM zn_vehicles WHERE vin_code = '${vin_code}'`)
+      const [rows] = await fastify.db.execute(`SELECT vin_code FROM lg_vehicles WHERE vin_code = '${vin_code}'`)
       if (rows.length > 0) {
         return reply.send({ message: 'vin码不能不能重复', code: 400 })
       }
 
-      const sql = `INSERT INTO zn_vehicles (
+      const sql = `INSERT INTO lg_vehicles (
           plate_number, vehicle_alias, vehicle_photo, brand, manufacture_year, department,
           current_location_id, series_number, vin_code, mileage, fuel_type, engine_number,
-          insurance_expiry, purchase_date, remark, owner_id, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`;
+          insurance_expiry, purchase_date, remark, owner_id, status,
+          vehicle_weight, load_capacity, emission_standard, safety_equipment, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`;
 
       //  汽油','柴油','新能源','混合动力','其他'
       const params = [plate_number, vehicle_alias, vehicle_photo, brand, manufacture_year, department, current_location_id,
         series_number, vin_code, mileage, fuel_type, engine_number, insurance_expiry,
-        purchase_date, remark, owner_id, status]
+        purchase_date, remark, owner_id, status, vehicle_weight, load_capacity,
+        emission_standard, safety_equipment]
 
       const [result] = await fastify.db.execute(sql, params)
       const vehicleId = result.insertId;
@@ -121,7 +107,7 @@ async function vehicleRoutes(fastify)  {
       // 处理司机关联
       if (Array.isArray(driver_ids) && driver_ids.length > 0) {
         const insertDriversSQL = `
-        INSERT INTO zn_vehicle_drivers (vehicle_id, driver_id, assigned_date, created_at, updated_at)
+        INSERT INTO lg_vehicle_drivers (vehicle_id, driver_id, assigned_date, created_at, updated_at)
         VALUES ${driver_ids.map(() => '(?, ?, NOW(), NOW(), NOW())').join(', ')}
       `;
         // 拼接参数，重复 vehicleId 对应每个 driver_id
@@ -146,50 +132,73 @@ async function vehicleRoutes(fastify)  {
     const {
       plate_number, vehicle_id, vehicle_alias, vehicle_photo, brand, manufacture_year, department,
       current_location_id, series_number, vin_code, mileage, fuel_type, engine_number, insurance_expiry,
-      purchase_date, status, remark, owner_id, driver_ids,
+      purchase_date, status, remark, owner_id, driver_ids, vehicle_weight, load_capacity,
+      emission_standard, safety_equipment
     } = request.body;
     try {
       if (!vehicle_id) {
-        return reply.send({ message: '车辆id不能为空' });
+        return reply.send({ message: '车辆id不能为空', code: 400 });
       }
-      if (!owner_id) {
-        return reply.send({ message: '负责人不能为空' });
-      }
+
       const params = [
-        plate_number, vehicle_alias, vehicle_photo, brand, manufacture_year, department, current_location_id,
-        series_number, vin_code, mileage, fuel_type, engine_number, insurance_expiry,
-        purchase_date, status, remark, owner_id, vehicle_id,];
+        plate_number,
+        vehicle_alias,
+        vehicle_photo,
+        brand,
+        manufacture_year,
+        department,
+        current_location_id,
+        series_number,
+        vin_code,
+        mileage,
+        fuel_type,
+        engine_number,
+        insurance_expiry,
+        purchase_date,
+        status,
+        remark,
+        owner_id,
+        vehicle_weight,
+        load_capacity,
+        emission_standard,
+        safety_equipment,
+        vehicle_id
+      ];
       const sql = `
-      UPDATE zn_vehicles
-      SET plate_number = ?,
-          vehicle_alias = ?,
-          vehicle_photo = ?,
-          brand = ?,
-          manufacture_year = ?,
-          department = ?,
-          current_location_id = ?,
-          series_number = ?,
-          vin_code = ?,
-          mileage = ?,
-          fuel_type = ?,
-          engine_number = ?,
-          insurance_expiry = ?,
-          purchase_date = ?,
-          status = ?,
-          remark = ?,
-          owner_id = ?,
-          updated_at = NOW()
-      WHERE id = ?
+          UPDATE lg_vehicles
+          SET plate_number = ?,
+              vehicle_alias = ?,
+              vehicle_photo = ?,
+              brand = ?,
+              manufacture_year = ?,
+              department = ?,
+              current_location_id = ?,
+              series_number = ?,
+              vin_code = ?,
+              mileage = ?,
+              fuel_type = ?,
+              engine_number = ?,
+              insurance_expiry = ?,
+              purchase_date = ?,
+              status = ?,
+              remark = ?,
+              owner_id = ?,
+              vehicle_weight = ?,
+              load_capacity = ?,
+              emission_standard = ?,
+              safety_equipment = ?,
+              updated_at = NOW()
+          WHERE id = ?
       `;
       const [result] = await fastify.db.execute(sql, params);
 
       if (result.affectedRows > 0) {
         // 1. 删除原来的司机关联
-        await fastify.db.execute(`DELETE FROM zn_vehicle_drivers WHERE vehicle_id = ${vehicle_id}`);
+        await fastify.db.execute(`DELETE FROM lg_vehicle_drivers WHERE vehicle_id = ${vehicle_id}`);
         // 2. 插入新的司机关联
         if (Array.isArray(driver_ids) && driver_ids.length > 0) {
           const insertDriversSQL = `
-          INSERT INTO zn_vehicle_drivers (vehicle_id, driver_id, assigned_date, created_at, updated_at)
+          INSERT INTO lg_vehicle_drivers (vehicle_id, driver_id, assigned_date, created_at, updated_at)
           VALUES ${driver_ids.map(() => '(?, ?, NOW(), NOW(), NOW())').join(', ')}
         `;
           const driverParams = driver_ids.flatMap(driverId => [vehicle_id, driverId]);
@@ -213,7 +222,7 @@ async function vehicleRoutes(fastify)  {
     }
   })
 
-  //  调度车辆查询
+  //  调度车辆查询,废弃
   fastify.get('/getVehicleControl', async (request, reply) => {
     try {
       // 获取分页参数
@@ -224,7 +233,7 @@ async function vehicleRoutes(fastify)  {
       const [num1, num2] = status.split(',').map(s => parseInt(s.trim(), 10));
 
       // 查询总数
-      const [countRows] = await fastify.db.execute(`SELECT COUNT(*) AS total FROM zn_vehicles WHERE status IN (?, ?)`, [num1, num2]);
+      const [countRows] = await fastify.db.execute(`SELECT COUNT(*) AS total FROM lg_vehicles WHERE status IN (?, ?)`, [num1, num2]);
       const total = countRows[0].total;
 
 
@@ -248,21 +257,21 @@ async function vehicleRoutes(fastify)  {
                    vd.id as dispatch_id,
                    vd.batch_id,
                    COALESCE(vd.dispatch_status, '2') AS dispatch_status
-           FROM zn_vehicles v
-                    LEFT JOIN zn_locations l ON v.current_location_id = l.id
+           FROM lg_vehicles v
+                    LEFT JOIN lg_locations l ON v.current_location_id = l.id
                     LEFT JOIN (
                SELECT vd.*
-               FROM zn_vehicle_dispatches vd
+               FROM lg_vehicle_dispatches vd
                         INNER JOIN (
                    SELECT vehicle_id, MAX(id) AS max_id
-                   FROM zn_vehicle_dispatches
+                   FROM lg_vehicle_dispatches
                    WHERE dispatch_status != '3'   -- 排除已完成
                    GROUP BY vehicle_id
                ) t ON vd.id = t.max_id
            ) vd ON vd.vehicle_id = v.id
-                    LEFT JOIN zn_logistics_routes r ON vd.route_id = r.id
-                    LEFT JOIN zn_locations sl ON r.start_station_id = sl.id
-                    LEFT JOIN zn_locations el ON r.end_station_id = el.id
+                    LEFT JOIN lg_logistics_routes r ON vd.route_id = r.id
+                    LEFT JOIN lg_locations sl ON r.start_station_id = sl.id
+                    LEFT JOIN lg_locations el ON r.end_station_id = el.id
            WHERE v.status IN (?, ?)
            ORDER BY v.created_at DESC
                LIMIT ${pageSize} OFFSET ${offset}`, [num1, num2]);
@@ -273,8 +282,8 @@ async function vehicleRoutes(fastify)  {
       if (vehicleIds.length > 0) {
         const [driverRows] = await fastify.db.query(
             `SELECT vd.vehicle_id, d.name, d.phone
-             FROM zn_vehicle_drivers vd
-                      JOIN zn_drivers d ON vd.driver_id = d.id
+             FROM lg_vehicle_drivers vd
+                      JOIN lg_drivers d ON vd.driver_id = d.id
              WHERE vd.vehicle_id IN (${vehicleIds.map(() => '?').join(',')})`,
             vehicleIds
         );
@@ -315,19 +324,23 @@ async function vehicleRoutes(fastify)  {
       if (!vehicle_id) {
         return reply.send({ code: 400, message: '车辆id不能为空' });
       }
-      const [rows] = await fastify.db.execute(`SELECT * FROM zn_vehicles WHERE id = ?`, [vehicle_id]);
+      const [rows] = await fastify.db.execute(`SELECT * FROM lg_vehicles WHERE id = ?`, [vehicle_id]);
       if (rows.length === 0) {
         return reply.send({ code: 400, message: '车辆不存在或状态不允许调度' });
       }
-      if (rows[0].control_status === '1') {
-        return reply.send({ message: '车辆已调度', code: 400 })
+
+      if (rows[0].status === '3') {
+        return reply.send({ message: '车辆检修中，无法安排调度任务', code: 400 })
+      }
+      if (rows[0].status === '2') {
+        return reply.send({ message: '车辆故障，无法安排调度任务', code: 400 })
       }
 
-      const ok = await dispatchSingleVehicle(fastify, vehicle_id);
+      const {ok, message} = await dispatchSingleVehicle(fastify, vehicle_id);
       if (ok) {
-        return reply.send({ message: '车辆调度成功' });
+        return reply.send({ message });
       }
-      return reply.send({ code: 400, message: '车辆调度失败，车辆可能不在空闲状态' });
+      return reply.send({ code: 400, message });
     } catch (err) {
       fastify.log.error('单个车辆调度报错', err);
       throw err;
@@ -344,7 +357,7 @@ async function vehicleRoutes(fastify)  {
 
       let successCount = 0;
       for (const vehicle_id of vehicle_ids) {
-        const ok = await dispatchSingleVehicle(fastify, vehicle_id);
+        const {ok} = await dispatchSingleVehicle(fastify, vehicle_id);
         if (ok) successCount++;
       }
       return reply.send({
@@ -360,36 +373,46 @@ async function vehicleRoutes(fastify)  {
   fastify.get('/getVehicleControlHistory', async (request, reply) => {
     try {
       // 获取分页参数
-      const { page = 1, pageSize = 10, vehicle_id } = request.query;
+      const { page = 1, pageSize = 10, status } = request.query;
 
       const offset = (page - 1) * pageSize;
+
+      // 动态构造 status 条件
+      let whereClause = '';
+      const params = [];
+
+      if (status !== undefined && status !== null && status !== '') {
+        whereClause = 'WHERE vd.dispatch_status = ?';
+        params.push(status);
+      }
 
       // 查询总数
       const [countRows] = await fastify.db.execute(
           `
-            SELECT
-                COUNT(*) AS total
-            FROM zn_vehicle_dispatches
-            WHERE dispatch_status = 3 AND vehicle_id = ?`, [vehicle_id]);
+              SELECT COUNT(*) AS total
+              FROM lg_vehicle_dispatches vd
+                  ${whereClause}
+          `,
+          params
+      );
+
       const total = countRows[0].total;
 
       // 查询分页数据
       const [rows] = await fastify.db.execute(
           `SELECT
-          vd.batch_id,
-          vd.dispatch_status,
-          vd.start_time,
-          vd.end_time,
+          vd.*,
           v.id,
           v.vehicle_alias,
-          lr.route_name
-          FROM zn_vehicle_dispatches vd
-          LEFT JOIN zn_vehicles v ON vd.vehicle_id = v.id
-          LEFT JOIN zn_logistics_routes lr ON vd.route_id = lr.id
-           WHERE vd.dispatch_status = '3' AND v.id = ?
-         ORDER BY v.created_at DESC
-         LIMIT ${pageSize} OFFSET ${offset}`, [vehicle_id]);
-
+          lr.route_name,
+          lr.distance_km,
+          lr.estimated_time
+          FROM lg_vehicle_dispatches vd
+          LEFT JOIN lg_vehicles v ON vd.vehicle_id = v.id
+          LEFT JOIN lg_logistics_routes lr ON vd.route_id = lr.id
+          ${whereClause}
+         ORDER BY vd.created_at DESC
+         LIMIT ${pageSize} OFFSET ${offset}`, [params]);
 
       // 查询每辆车对应的司机信息
       const vehicleIds = rows.map(r => r.id);
@@ -397,8 +420,8 @@ async function vehicleRoutes(fastify)  {
       if (vehicleIds.length > 0) {
         const [driverRows] = await fastify.db.query(
             `SELECT vd.vehicle_id, d.name, d.phone
-             FROM zn_vehicle_drivers vd
-                      JOIN zn_drivers d ON vd.driver_id = d.id
+             FROM lg_vehicle_drivers vd
+                      JOIN lg_drivers d ON vd.driver_id = d.id
              WHERE vd.vehicle_id IN (${vehicleIds.map(() => '?').join(',')})`,
             vehicleIds
         );
@@ -452,11 +475,11 @@ async function vehicleRoutes(fastify)  {
             sl.address AS start_address,
             el.name AS end_name,
             el.address AS end_address
-            FROM zn_vehicle_dispatches vd
-        LEFT JOIN zn_vehicles v ON vd.vehicle_id = v.id
-        LEFT JOIN zn_logistics_routes lr ON vd.route_id = lr.id
-        LEFT JOIN zn_locations sl ON lr.start_station_id = sl.id
-        LEFT JOIN zn_locations el ON  lr.end_station_id = el.id
+            FROM lg_vehicle_dispatches vd
+        LEFT JOIN lg_vehicles v ON vd.vehicle_id = v.id
+        LEFT JOIN lg_logistics_routes lr ON vd.route_id = lr.id
+        LEFT JOIN lg_locations sl ON lr.start_station_id = sl.id
+        LEFT JOIN lg_locations el ON  lr.end_station_id = el.id
         ORDER BY
             CASE vd.transport_status
                 WHEN 1 THEN 1  -- 运输中
@@ -474,8 +497,8 @@ async function vehicleRoutes(fastify)  {
     if (vehicleIds.length > 0) {
       const [driverRows] = await fastify.db.query(
           `SELECT vd.vehicle_id, d.name, d.phone
-             FROM zn_vehicle_drivers vd
-                      JOIN zn_drivers d ON vd.driver_id = d.id
+             FROM lg_vehicle_drivers vd
+                      JOIN lg_drivers d ON vd.driver_id = d.id
              WHERE vd.vehicle_id IN (${vehicleIds.map(() => '?').join(',')})`,
           vehicleIds
       );

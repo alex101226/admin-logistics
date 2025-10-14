@@ -41,7 +41,7 @@ async function generateFences() {
       const remark = device.remark;
       const createdAt = randomDate(new Date('2025-05-01'), new Date('2025-06-30'));
       await conn.execute(
-          `INSERT INTO zn_electronic_fences
+          `INSERT INTO lg_electronic_fences
            (fence_name, fence_type, group_key, device_location_key, remark, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [fenceName, fenceType, groupKey, deviceLocationKey, remark, createdAt, createdAt]

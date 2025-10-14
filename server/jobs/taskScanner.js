@@ -26,7 +26,7 @@ export function registerTaskScanner(fastify) {
               start_time,
               plan_running_time,
              (NOW() >= start_time + INTERVAL TIME_TO_SEC(plan_running_time) SECOND) AS shouldEnd
-          FROM zn_tasks
+          FROM lg_tasks
           WHERE status = 3
       `);
       for (const task of runningTasks) {
@@ -34,7 +34,7 @@ export function registerTaskScanner(fastify) {
 
         if (task.shouldEnd) {
           await fastify.db.execute(
-              `UPDATE zn_tasks
+              `UPDATE lg_tasks
                SET status = 1,
                    end_time = DATE_ADD(start_time, INTERVAL ? SECOND),
                    real_running_time = ?,
@@ -49,7 +49,7 @@ export function registerTaskScanner(fastify) {
       // 2. 检查当前运行中的任务数量
       const [countRows] = await fastify.db.execute(`
           SELECT COUNT(*) AS running_count
-          FROM zn_tasks
+          FROM lg_tasks
           WHERE status = 3
       `);
       const runningCount = countRows[0].running_count;
@@ -60,23 +60,23 @@ export function registerTaskScanner(fastify) {
         const availableSlots = MAX_RUNNING - runningCount;
         const [queuedTasks] = await fastify.db.execute(
             `SELECT id
-             FROM zn_tasks
+             FROM lg_tasks
              WHERE status = 4
                AND TIMESTAMPDIFF(MINUTE, created_at, NOW()) >= ?
              ORDER BY created_at ASC
                  LIMIT ${availableSlots}`,
             [QUEUE_WAIT_MIN]
         );
-        console.log('看下 queuedTasks', queuedTasks)
+        // console.log('看下 queuedTasks', queuedTasks)
 
         if (queuedTasks.length > 0) {
           const ids = queuedTasks.map(t => t.id);
-          console.log('查看ids', ids)
+          // console.log('查看ids', ids)
           if (ids.length > 0) {
             const placeholders = ids.map(() => '?').join(',');
-            console.log('查看 placeholders', placeholders)
+            // console.log('查看 placeholders', placeholders)
             await fastify.db.execute(
-                `UPDATE zn_tasks
+                `UPDATE lg_tasks
                  SET status = 3,
                      start_time = NOW(),
                      updated_at = NOW()

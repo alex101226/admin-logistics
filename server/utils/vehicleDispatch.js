@@ -34,9 +34,8 @@ function getDistance(lat1, lng1, lat2, lng2) {
 async function getAvailableVehicle(fastify, vehicle_id) {
   const [rows] = await fastify.db.execute(
       `SELECT *
-     FROM zn_vehicles
-     WHERE status IN ('1','4') AND id= ? -- 使用中 or 闲置
-       AND control_status = '2' -- 未调度
+     FROM lg_vehicles
+     WHERE status IN ('1','4') AND id= ?
      LIMIT 1`, [vehicle_id]
   );
   return rows[0] || null;
@@ -48,10 +47,10 @@ async function getAvailableVehicle(fastify, vehicle_id) {
 async function getAvailableRoute(fastify) {
   const [rows] = await fastify.db.execute(
       `SELECT r.*
-     FROM zn_logistics_routes r
+     FROM lg_logistics_routes r
      WHERE r.status = '1'
        AND NOT EXISTS (
-         SELECT 1 FROM zn_vehicle_dispatches d
+         SELECT 1 FROM lg_vehicle_dispatches d
          WHERE d.route_id = r.id
            AND d.dispatch_status = '1'
        )
@@ -70,7 +69,7 @@ async function getNearestRouteByLocation(fastify, vehicle) {
   // 查询车辆当前位置
   const [[loc]] = await fastify.db.execute(
       `SELECT id, lng, lat
-     FROM zn_locations
+     FROM lg_locations
      WHERE id = ?`,
       [vehicle.current_location_id]
   );
@@ -79,8 +78,8 @@ async function getNearestRouteByLocation(fastify, vehicle) {
   // 查询所有可用路线及其起点
   const [routes] = await fastify.db.execute(
       `SELECT r.*, s.lng, s.lat
-     FROM zn_logistics_routes r
-     JOIN zn_locations s ON r.start_station_id = s.id
+     FROM lg_logistics_routes r
+     JOIN lg_locations s ON r.start_station_id = s.id
      WHERE r.status = '1'`
   );
 
@@ -100,9 +99,12 @@ async function getNearestRouteByLocation(fastify, vehicle) {
  * 分配路线给车辆
  */
 async function assignRouteToVehicle(fastify, vehicle, route) {
+  // 兜底：防止 estimated_time 是 null 或空字符串
+  const estimatedTime = Number(route.estimated_time) || 0;
+  const estimatedMinutes = Math.round(estimatedTime * 60); // 转分钟，四舍五入
   // 插入调度记录
   await fastify.db.execute(
-      `INSERT INTO zn_vehicle_dispatches
+      `INSERT INTO lg_vehicle_dispatches
       (
        vehicle_id,
        route_id,
@@ -113,15 +115,14 @@ async function assignRouteToVehicle(fastify, vehicle, route) {
        start_time,
        created_at
       )
-     VALUES (?, ?, '1', '1', ?, DATE_ADD(NOW(), INTERVAL ? HOUR), NOW(), NOW())`,
-      [vehicle.id, route.id, getUUid(), route.estimated_time]
+     VALUES (?, ?, '1', '1', ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW(), NOW())`,
+      [vehicle.id, route.id, getUUid(), estimatedMinutes]
   );
 
   // 更新车辆状态
   await fastify.db.execute(
-      `UPDATE zn_vehicles
-     SET control_status = '1',  -- 已调度
-         assigned_route_id = ?,
+      `UPDATE lg_vehicles
+     SET assigned_route_id = ?,
          status = '1'            -- 使用中
      WHERE id = ?`,
       [route.id, vehicle.id]
@@ -138,8 +139,11 @@ async function dispatchSingleVehicle(fastify, vehicle_id, batch_id) {
   // 1. 查找可调度车辆
   const vehicle = await getAvailableVehicle(fastify, vehicle_id);
   if (!vehicle) {
-    fastify.log.info("没有可调度的车辆");
-    return null;
+    // fastify.log.info("没有可调度的车辆");
+    return {
+      ok: false,
+      message: '没有可调度的车辆'
+    };
   }
 
   // 2. 查找未占用路线
@@ -150,7 +154,7 @@ async function dispatchSingleVehicle(fastify, vehicle_id, batch_id) {
     if (vehicle.assigned_route_id) {
       // 已有路线，继续用原来的
       const [[assignedRoute]] = await fastify.db.execute(
-          `SELECT * FROM zn_logistics_routes WHERE id = ?`,
+          `SELECT * FROM lg_logistics_routes WHERE id = ?`,
           [vehicle.assigned_route_id]
       );
       route = assignedRoute;
@@ -160,10 +164,12 @@ async function dispatchSingleVehicle(fastify, vehicle_id, batch_id) {
     }
   }
 
-  console.log('看下路线信息', route)
   if (!route) {
     fastify.log.info(`车辆 ${vehicle.id} 未找到合适路线`);
-    return null;
+    return {
+      ok: false,
+      message: `车辆 ${vehicle.vehicle_alias} 未找到合适路线`
+    };
   }
 
   // 4. 分配路线
@@ -173,7 +179,7 @@ async function dispatchSingleVehicle(fastify, vehicle_id, batch_id) {
       `车辆 ${vehicle.id} (${vehicle.vehicle_alias}) 已调度到路线 ${routeId}`
   );
 
-  return { vehicle_id: vehicle.id, route_id: routeId };
+  return { vehicle_id: vehicle.id, route_id: routeId, ok: true, message: '调度成功' };
 }
 
 export { dispatchSingleVehicle };

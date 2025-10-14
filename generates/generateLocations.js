@@ -60,7 +60,7 @@ async function generateLocations(count = 50) {
       const lat = randomCoord(city.lat, 0.3);
 
       await conn.execute(
-          `INSERT INTO zn_locations (name, address, lng, lat) VALUES (?, ?, ?, ?)`,
+          `INSERT INTO lg_locations (name, address, lng, lat) VALUES (?, ?, ?, ?)`,
           [name, address, lng, lat]
       );
     }

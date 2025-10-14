@@ -11,7 +11,7 @@ export default async function logisticsRoutes(fastify) {
 
       // 统计总数
       const [[{ total }]] = await fastify.db.execute(
-          `SELECT COUNT(*) AS total FROM zn_logistics_routes`
+          `SELECT COUNT(*) AS total FROM lg_logistics_routes`
       );
 
       // 主查询
@@ -35,9 +35,9 @@ export default async function logisticsRoutes(fastify) {
           s2.lat AS end_lat,
           r.created_at,
           r.updated_at
-        FROM zn_logistics_routes r
-        LEFT JOIN zn_locations s1 ON r.start_station_id = s1.id
-        LEFT JOIN zn_locations s2 ON r.end_station_id = s2.id
+        FROM lg_logistics_routes r
+        LEFT JOIN lg_locations s1 ON r.start_station_id = s1.id
+        LEFT JOIN lg_locations s2 ON r.end_station_id = s2.id
         ORDER BY r.created_at DESC
         LIMIT ${offset}, ${limit}
         `);
@@ -77,7 +77,7 @@ export default async function logisticsRoutes(fastify) {
       // 插入路线表
       const [result] = await fastify.db.execute(
           `
-        INSERT INTO zn_logistics_routes 
+        INSERT INTO lg_logistics_routes 
           (
            route_name,
            start_station_id,
@@ -99,7 +99,7 @@ export default async function logisticsRoutes(fastify) {
           const stationId = stations[i];
           await fastify.db.execute(
               `
-          INSERT INTO zn_route_stations (route_id, station_id, stop_order)
+          INSERT INTO lg_route_stations (route_id, station_id, stop_order)
           VALUES (?, ?, ?)
           `,
               [routeId, stationId, i + 1] // sort_order 从 1 开始
@@ -134,7 +134,7 @@ export default async function logisticsRoutes(fastify) {
       return reply.send({ code: 400, message: '参数错误' });
     }
     const [result] = await fastify.db.execute(`
-    UPDATE zn_logistics_routes SET status = ? WHERE id = ?`, [status, logistics_id])
+    UPDATE lg_logistics_routes SET status = ? WHERE id = ?`, [status, logistics_id])
     if (result.affectedRows > 0) {
       return reply.send({
         code: 0,
@@ -169,9 +169,9 @@ export default async function logisticsRoutes(fastify) {
           el.address as end_address,
           el.lng as end_lng,
           el.lat as end_lat
-          FROM zn_logistics_routes lr
-        LEFT JOIN zn_locations sl ON sl.id = lr.start_station_id
-        LEFT JOIN zn_locations el ON el.id = lr.end_station_id
+          FROM lg_logistics_routes lr
+        LEFT JOIN lg_locations sl ON sl.id = lr.start_station_id
+        LEFT JOIN lg_locations el ON el.id = lr.end_station_id
         WHERE lr.id = ?
       `, [route_id])
 
@@ -190,8 +190,8 @@ export default async function logisticsRoutes(fastify) {
             l.address,
             l.lng,
             l.lat
-        FROM zn_route_stations rs
-        JOIN zn_locations l ON rs.station_id = l.id
+        FROM lg_route_stations rs
+        JOIN lg_locations l ON rs.station_id = l.id
         WHERE rs.route_id IN (?)
         ORDER BY rs.route_id, rs.stop_order ASC
       `;

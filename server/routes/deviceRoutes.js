@@ -9,7 +9,7 @@ export default async function deviceRoutes(fastify) {
 
       // 统计总数
       const [[{ total }]] = await fastify.db.execute(
-          `SELECT COUNT(*) AS total FROM zn_electronic_fences`
+          `SELECT COUNT(*) AS total FROM lg_electronic_fences`
       );
 
       // 主查询
@@ -22,7 +22,7 @@ export default async function deviceRoutes(fastify) {
             ef.group_key,
             ef.device_location_key,
             ef.remark
-        FROM zn_electronic_fences ef
+        FROM lg_electronic_fences ef
         ORDER BY ef.created_at DESC
         LIMIT ${offset}, ${limit}
         `);
@@ -48,7 +48,7 @@ export default async function deviceRoutes(fastify) {
     try {
       const { fence_name, fence_type, group_key, device_location_key, remark } = request.body;
 
-      const sql = `INSERT INTO zn_electronic_fences
+      const sql = `INSERT INTO lg_electronic_fences
     (
         fence_name,
         fence_type,
