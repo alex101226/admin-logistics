@@ -1,13 +1,13 @@
 //  生产环境
 export default {
-  port: 5000,
+  port: 9092,
   host: '0.0.0.0',
   db: {
     port: 3306,
     user: 'logistics',
     password: 'Root@2025', //  Root@2025
-    host: '127.0.0.1',
-    database: 'logistics',
+    host: 'logistics-db',
+    database: 'logistics_db',
   },
   jwt: {
     secret: 'o2v9WqV3hM8u7zYfHcPqR1s5lTgBj9DkXxN4d0K2SxA=',
