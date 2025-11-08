@@ -87,11 +87,14 @@ async function commonRoutes(fastify) {
   fastify.get('/systemCount', async (request, reply) => {
 	//	司机的统计
 	const  [[{ driveCount }]] = await fastify.db.execute('SELECT COUNT(*) AS driveCount FROM lg_drivers')
-	//	电子围栏的统计
-	const  [[{ fencesCount }]] = await fastify.db.execute('SELECT COUNT(*) AS fencesCount FROM lg_electronic_fences')
+
 	//	路线的统计
-	const  [[{ routesCount }]] = await fastify.db.execute('SELECT COUNT(*) AS routesCount FROM lg_logistics_routes')
-	console.log('路线的统计', routesCount)
+	const [routeRows] = await fastify.db.execute(`
+        SELECT
+            SUM(CASE WHEN status = '1' THEN 1 ELSE 0 END) AS normalCount,
+            COUNT(*) AS totalCount
+        FROM lg_logistics_routes
+	`);
 	//	调度任务的统计
 	const  [[{ dispatchesCount }]] = await fastify.db.execute('SELECT COUNT(*) AS dispatchesCount FROM lg_vehicle_dispatches')
 
@@ -110,8 +113,8 @@ async function commonRoutes(fastify) {
 	return reply.send({
 	  data: {
 		driveCount,
-		fencesCount,
-		routesCount,
+		routesNormalCount: routeRows[0].normalCount,
+		routesCount: routeRows[0].totalCount,
 		dispatchesCount,
 		vehicleCount,
 		vehicleStatusCount
