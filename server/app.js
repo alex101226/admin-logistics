@@ -3,7 +3,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyMultipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
-import path from 'path';
+import path from 'node:path';
 
 import routes from './routes/index.js';
 import dbPlugin from './plugins/db.js'
