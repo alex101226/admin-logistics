@@ -110,11 +110,12 @@ async function taskRoutes(fastify)  {
                    CROSS JOIN used_resources u
                    CROSS JOIN task_counts c;
     `);
-
+	  console.log('会被请求到吗？', rows)
       return reply.send({
         data: rows[0],
       })
     } catch (err) {
+	  console.log('是直接报错吗？', err)
       fastify.log.error(err);
       return reply.code(500).send({ success: false, message: '统计任务信息失败' });
     }
