@@ -18,3 +18,9 @@ RUN useradd -m logistics_admin
 USER logistics_admin
 
 CMD npm run start:prod
+
+
+
+
+
+
